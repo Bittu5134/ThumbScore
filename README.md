@@ -62,3 +62,32 @@ This is my first time making an extension, so far I have managed to setup the in
 
 
 next devlog tell users about alternatives
+
+---
+
+
+
+
+First things first I changed the project's name from `RatioYT` to `ThumbScore for YouTube` (I suck at naming things)
+
+now as for the progress, I managed to inject placeholder text into youtube UI
+and ngl that was more troublesome than I expected it to be.
+
+when I inspecting the HTML it had so many tags and elements TWT
+also the structure of videos arent consisitent throught the youtube system
+
+there are different structers for the videos and shorts in these places
+- Homepage
+- Serach
+- Shorts
+- Playlists
+- Mixes
+- YT Channel Page
+- Video Queues
+- Playlist Queues
+
+for now I think I managed to insert text in all these places programamtically.
+But after doing this initial setup I found one major issue, There are too many videos, teh users will hit API rate limits if they try to fetch video data for each of them, I can add rate limits, but then the extension wont be responsive enough.
+
+I have a plan for this isuues, but i'll first lookup online about similar implementaions before deciding on my plan of action.
+
