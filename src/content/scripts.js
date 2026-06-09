@@ -2,6 +2,106 @@ let index = 0;
 let elementQueue = [];
 let queueIntervalId = null;
 
+// Global fast-lookup memory map cache
+let localScoresDatabase = {};
+
+const DB_NAME = "RatioYT_Database";
+const DB_VERSION = 1;
+const STORE_NAME = "scores_cache";
+
+// Explicit Tier Constants for internal tracking authority designation
+const TIER_PERSONAL = 1; // Videos watched/fetched first-hand by this user
+const TIER_VERIFIED = 2; // Scores verified via swarm ID collisions
+const TIER_SWARM_POOL = 3; // Raw incoming unverified placeholder entries
+
+// --- INITIALIZATION: Setup IndexedDB and populate local memory map ---
+function initializeDatabase() {
+  const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+  request.onupgradeneeded = (event) => {
+    const db = event.target.result;
+    if (!db.objectStoreNames.contains(STORE_NAME)) {
+      db.createObjectStore(STORE_NAME, { keyPath: "videoId" });
+    }
+  };
+
+  request.onsuccess = (event) => {
+    const db = event.target.result;
+    const transaction = db.transaction(STORE_NAME, "readonly");
+    const store = transaction.objectStore(STORE_NAME);
+    const getAllRequest = store.getAll();
+
+    getAllRequest.onsuccess = () => {
+      const allEntries = getAllRequest.result;
+
+      allEntries.forEach((entry) => {
+        localScoresDatabase[entry.videoId] = {
+          score: entry.score,
+          expiresAt: entry.expiresAt,
+          tier: entry.tier || TIER_VERIFIED, // Fallback protection guard if field is missing
+        };
+      });
+
+      console.log(
+        `IndexedDB UI Cache Engine loaded. Active entries: ${allEntries.length}`,
+      );
+    };
+  };
+
+  request.onerror = (event) => {
+    console.error("IndexedDB initialization failed:", event.target.error);
+  };
+}
+
+initializeDatabase();
+
+// --- PERSISTENCE: Write item to IndexedDB with Tier 1 (Personal Watch Authority) ---
+function saveToPersistentStorage(videoId, scoreValue) {
+  const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+  request.onsuccess = (event) => {
+    const db = event.target.result;
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+
+    // Generate random expiration offset between 0 and 30 days
+    const randomDaysOld = Math.floor(Math.random() * 31);
+    const millisecondsInADay = 24 * 60 * 60 * 1000;
+    const expirationTimestamp = Date.now() + randomDaysOld * millisecondsInADay;
+
+    const newEntry = {
+      videoId: videoId,
+      score: scoreValue,
+      expiresAt: expirationTimestamp,
+      tier: TIER_PERSONAL, // Live API fetches always graduate directly to Tier 1
+    };
+
+    localScoresDatabase[videoId] = {
+      score: scoreValue,
+      expiresAt: newEntry.expirationTimestamp,
+      tier: TIER_PERSONAL,
+    };
+
+    store.put(newEntry);
+  };
+}
+
+// --- EVICTION: Deletes expired data instantly from both memory and disk ---
+function deleteExpiredCacheEntry(videoId) {
+  delete localScoresDatabase[videoId];
+
+  const request = indexedDB.open(DB_NAME, DB_VERSION);
+  request.onsuccess = (event) => {
+    const db = event.target.result;
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    store.delete(videoId);
+    console.log(
+      `[Cache Expired - Housekeeping] Removed expired item from DB backend: ${videoId}`,
+    );
+  };
+}
+
 // 1. CHOOSE: Scrape the Video ID based on the layout type
 function getVideoId(el, tagName) {
   try {
@@ -10,32 +110,37 @@ function getVideoId(el, tagName) {
       tagName === "ytd-playlist-video-renderer"
     ) {
       const link = el.querySelector("a#thumbnail");
-      return link
-        ? new URLSearchParams(link.getAttribute("href").split("?")[1]).get("v")
-        : null;
+      if (!link) return null;
+      const href = link.getAttribute("href");
+      const urlParams = new URLSearchParams(href.split("?")[1]);
+      return urlParams.get("v");
     }
 
     if (tagName === "ytd-playlist-panel-video-renderer") {
       const link =
         el.querySelector("a#thumbnail") ||
         el.querySelector("a[href*='watch?v=']");
-      return link
-        ? new URLSearchParams(link.getAttribute("href").split("?")[1]).get("v")
-        : null;
+      if (!link) return null;
+      const href = link.getAttribute("href");
+      const urlParams = new URLSearchParams(href.split("?")[1]);
+      return urlParams.get("v");
     }
 
     if (tagName === "ytm-shorts-lockup-view-model") {
       const link = el.querySelector("a[href*='/shorts/']");
-      return link
-        ? link.getAttribute("href").split("/shorts/")[1]?.split("?")[0]
-        : null;
+      if (!link) return null;
+      const href = link.getAttribute("href");
+      const shortPath = href.split("/shorts/")[1];
+      return shortPath.split("?")[0];
     }
 
     const wrapper = el.closest(".ytLockupViewModelHost");
-    const link = wrapper ? wrapper.querySelector("a[href*='watch?v=']") : null;
-    return link
-      ? new URLSearchParams(link.getAttribute("href").split("?")[1]).get("v")
-      : null;
+    if (!wrapper) return null;
+    const link = wrapper.querySelector("a[href*='watch?v=']");
+    if (!link) return null;
+    const href = link.getAttribute("href");
+    const urlParams = new URLSearchParams(href.split("?")[1]);
+    return urlParams.get("v");
   } catch (err) {
     return null;
   }
@@ -55,7 +160,11 @@ function getTargetRow(el, tagName) {
   const rows = el.getElementsByClassName(
     "ytContentMetadataViewModelMetadataRow",
   );
-  return rows.length >= 2 ? rows[1] : rows[0];
+  if (rows.length >= 2) {
+    return rows[1];
+  } else {
+    return rows[0];
+  }
 }
 
 // 3. INJECT EMPTY PLACEHOLDER: Returns the raw DOM reference to the placeholder span
@@ -65,20 +174,22 @@ function injectEmptyPlaceholder(targetRow, tagName) {
     tagName === "ytd-playlist-video-renderer" ||
     tagName === "ytd-playlist-panel-video-renderer";
 
-  // Handle separating dots
   if (isSearch) {
     const nativeSeparator = targetRow.querySelector("#separator");
-    if (nativeSeparator) nativeSeparator.removeAttribute("hidden");
+    if (nativeSeparator) {
+      nativeSeparator.removeAttribute("hidden");
+    }
   } else {
     const delimiter = document.createElement("span");
-    delimiter.className = isPlaylistOrQueue
-      ? "style-scope yt-formatted-string"
-      : "ytContentMetadataViewModelDelimiter";
+    if (isPlaylistOrQueue) {
+      delimiter.className = "style-scope yt-formatted-string";
+    } else {
+      delimiter.className = "ytContentMetadataViewModelDelimiter";
+    }
     delimiter.textContent = " • ";
     targetRow.appendChild(delimiter);
   }
 
-  // Create industry-standard loading style placeholder node
   const percentageSpan = document.createElement("span");
   if (isSearch) {
     percentageSpan.className =
@@ -90,16 +201,20 @@ function injectEmptyPlaceholder(targetRow, tagName) {
       "ytAttributedStringHost ytContentMetadataViewModelMetadataText";
   }
 
-  // Light gray colored placeholder indicating text is loading
   percentageSpan.style.color = "#888888";
   percentageSpan.textContent = "--%";
 
   targetRow.appendChild(percentageSpan);
-
-  return percentageSpan; // Passing memory reference back to the queue
+  return percentageSpan;
 }
 
-// 4. QUEUE WORKER: Executes your arbitrary async actions sequentially every 0.5s
+// 4. UPDATE VALUE: Applies permanent colors and sets final visual score text
+function applyFinalScore(placeholderElement, scoreValue) {
+  placeholderElement.style.color = "#2ba640";
+  placeholderElement.textContent = `${scoreValue}%`;
+}
+
+// 5. QUEUE WORKER: Executes your arbitrary async actions sequentially every 0.5s
 function processQueue() {
   if (elementQueue.length === 0) {
     clearInterval(queueIntervalId);
@@ -108,38 +223,38 @@ function processQueue() {
   }
 
   const currentTask = elementQueue.shift();
-  const { videoId, placeholderElement } = currentTask;
+  const videoId = currentTask.videoId;
+  const placeholderElement = currentTask.placeholderElement;
 
-  // CRITICAL CHECK: Ensure the layout node hasn't been swept away by SPA tab navigation
   if (!placeholderElement || !document.body.contains(placeholderElement)) {
-    console.log(
-      `Skipping video ${videoId}: Placeholder element no longer exists in DOM.`,
-    );
-    // Tail call execution recursion bypass to immediately parse next item if skipped
+    console.log(`Skipping video ${videoId}: Placeholder layout destroyed.`);
     processQueue();
     return;
   }
 
   // --- ARBITRARY CODE EXECUTION SPACE ---
   console.log(
-    `Processing Queue Item: Processing video data for ID: ${videoId}`,
+    `[RYD API Simulation Request] Fetching metrics for ID: ${videoId}`,
   );
 
-  // Update styling and replace placeholder with your computed value data
-  placeholderElement.style.color = "#2ba640";
-  placeholderElement.textContent = `${index}%`;
+  const freshlyFetchedScore = Math.floor(Math.random() * 101);
 
+  // Commit changes to storage. Internally marks entry as Tier 1 automatically.
+  saveToPersistentStorage(videoId, freshlyFetchedScore);
+  applyFinalScore(placeholderElement, freshlyFetchedScore);
   index++;
 }
 
-// 5. ENGINE: Observers view changes and schedules background queue updates
+// 6. ENGINE: Synchronously handles valid cache hits, triggers eviction resets, or routes items to worker queue
 const observer = new MutationObserver(() => {
   const elements = document.querySelectorAll(
     "yt-content-metadata-view-model, ytm-shorts-lockup-view-model, ytd-video-renderer, ytd-playlist-video-renderer, ytd-playlist-panel-video-renderer",
   );
 
   elements.forEach((el) => {
-    if (el.dataset.ytRatioDone) return;
+    if (el.dataset.ytRatioDone) {
+      return;
+    }
     el.dataset.ytRatioDone = "true";
 
     const tagName = el.tagName.toLowerCase();
@@ -148,14 +263,26 @@ const observer = new MutationObserver(() => {
 
     if (videoId && targetRow) {
       const placeholderElement = injectEmptyPlaceholder(targetRow, tagName);
-      elementQueue.push({
-        videoId: videoId,
-        placeholderElement: placeholderElement,
-      });
+      const cachedRecord = localScoresDatabase[videoId];
+
+      if (cachedRecord !== undefined) {
+        // UI Safety Rule: Use whatever valid cache score we have in memory immediately
+        applyFinalScore(placeholderElement, cachedRecord.score);
+
+        // Run expiration evaluation silently behind the scenes
+        if (Date.now() >= cachedRecord.expiresAt) {
+          deleteExpiredCacheEntry(videoId);
+        }
+      } else {
+        // Cache Miss: Send item to the throttled rate-limiting queue loop
+        elementQueue.push({
+          videoId: videoId,
+          placeholderElement: placeholderElement,
+        });
+      }
     }
   });
 
-  // Turn on 0.5-second clock pulse execution intervals if unassigned
   if (elementQueue.length > 0 && !queueIntervalId) {
     queueIntervalId = setInterval(processQueue, 500);
   }
@@ -163,12 +290,12 @@ const observer = new MutationObserver(() => {
 
 observer.observe(document.body, { childList: true, subtree: true });
 
-// 6. CLEANER: Handle unexpected route modifications cleanly
+// 7. CLEANER: Handle unexpected route modifications cleanly
 window.addEventListener("yt-navigate-start", () => {
   elementQueue = [];
   if (queueIntervalId) {
     clearInterval(queueIntervalId);
     queueIntervalId = null;
   }
-  console.log("Global reset: Queue arrays garbage collected.");
+  console.log("Global reset: Staggered intervals cleared.");
 });
