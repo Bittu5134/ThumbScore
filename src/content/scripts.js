@@ -2,6 +2,7 @@
 
 let elementQueue = [];
 let queueIntervalId = null;
+let pendingVideos = new Set();
 
 // Update Database namind and version here
 let scoreDB = {};
@@ -9,15 +10,23 @@ let scoreDB = {};
 const DB_NAME = "ThumbScoreDB";
 const DB_STORE = "scores";
 const DB_VERSION = 1;
-const DB_POINTER = indexedDB.open(DB_NAME, DB_VERSION);
-
+let dbInstance = null;
 
 // Cache Tiers
 const TIER_PERSONAL = 1;
 const TIER_VERIFIED = 2;
 const TIER_PUBLIC = 3;
 
-// Loading Database into memory
+// STORAGE: Helper to get Object Store
+function getStore(mode = "readonly") {
+  if (!dbInstance) {
+    console.warn("[ThumbScore] Database connection is not ready yet.");
+    return null;
+  }
+  return dbInstance.transaction(DB_STORE, mode).objectStore(DB_STORE);
+}
+
+// STORAGE: Initialize IndexedDB and Load Cache into Memory
 function initializeDatabase() {
   const request = indexedDB.open(DB_NAME, DB_VERSION);
 
@@ -29,9 +38,9 @@ function initializeDatabase() {
   };
 
   request.onsuccess = (event) => {
-    const db = event.target.result;
-    const transaction = db.transaction(DB_STORE, "readonly");
-    const store = transaction.objectStore(DB_STORE);
+    dbInstance = event.target.result;
+
+    const store = getStore();
     const getAllRequest = store.getAll();
 
     getAllRequest.onsuccess = () => {
@@ -58,38 +67,19 @@ initializeDatabase();
 
 // STORAGE: Write to Tier 1 cache
 function saveToIndexDB(videoId, scoreValue, expiresAt) {
-  const request = indexedDB.open(DB_NAME, DB_VERSION);
+  const store = getStore("readwrite");
+  if (!store) return;
 
-  request.onsuccess = (event) => {
-    const db = event.target.result;
-    const transaction = db.transaction(DB_STORE, "readwrite");
-    const store = transaction.objectStore(DB_STORE);
-
-    const newEntry = {
-      videoId: videoId,
-      score: scoreValue,
-      expiresAt: expiresAt,
-      tier: TIER_PERSONAL,
-    };
-
-    scoreDB[videoId] = { score: scoreValue, expiresAt: newEntry.expiresAt, tier: TIER_PERSONAL };
-
-    store.put(newEntry);
+  const newEntry = {
+    videoId: videoId,
+    score: scoreValue,
+    expiresAt: expiresAt,
+    tier: TIER_PERSONAL,
   };
-}
 
-// STORAGE: Delete Expired data
-function deleteExpiredCacheEntry(videoId) {
-  delete scoreDB[videoId];
+  scoreDB[videoId] = { score: scoreValue, expiresAt: newEntry.expiresAt, tier: TIER_PERSONAL };
 
-  const request = indexedDB.open(DB_NAME, DB_VERSION);
-  request.onsuccess = (event) => {
-    const db = event.target.result;
-    const transaction = db.transaction(DB_STORE, "readwrite");
-    const store = transaction.objectStore(DB_STORE);
-    store.delete(videoId);
-    console.log(`[Cache Expired - Housekeeping] Removed expired item from DB backend: ${videoId}`);
-  };
+  store.put(newEntry);
 }
 
 // UI: Extracts Video From All UI types like, Homescreen, Serahc, Playlists etc etc
@@ -199,6 +189,7 @@ function processQueue() {
     queueIntervalId = null;
     return;
   }
+  pendingVideos.delete(videoID);
 
   const currentTask = elementQueue.shift();
   const videoID = currentTask.videoId;
@@ -206,7 +197,6 @@ function processQueue() {
 
   if (!placeholderElement || !document.body.contains(placeholderElement)) {
     console.log("[ThumbScore] Placeholder unavilable:", videoID);
-    processQueue();
     return;
   }
 
@@ -244,11 +234,8 @@ const observer = new MutationObserver(() => {
       //  Check Cache First
       if (cachedRecord !== undefined) {
         applyFinalScore(placeholderElement, cachedRecord.score);
-
-        if (Date.now() >= cachedRecord.expiresAt) {
-          deleteExpiredCacheEntry(videoId);
-        }
-      } else {
+      } else if (!pendingVideos.has(videoId)) {
+        pendingVideos.add(videoId);
         elementQueue.push({ videoId: videoId, placeholderElement: placeholderElement });
       }
     }
@@ -264,6 +251,7 @@ observer.observe(document.body, { childList: true, subtree: true });
 // UI: Clear elements for the processQueue Function
 window.addEventListener("yt-navigate-start", () => {
   elementQueue = [];
+  pendingVideos.clear();
   if (queueIntervalId) {
     clearInterval(queueIntervalId);
     queueIntervalId = null;

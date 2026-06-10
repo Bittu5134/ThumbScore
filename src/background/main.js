@@ -1,13 +1,19 @@
+
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.alarms.create("cleanup", { periodInMinutes: 1 });
+  console.log("Extension installed/reloaded. Initializing alarm...");
+
+  chrome.alarms.create("cleanup", {
+    delayInMinutes: 0.1,
+    periodInMinutes: 1,
+  });
 });
 
-chrome.alarms.onAlarm.addListener(() => {
-  runPeriodicStorageCleanup();
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "cleanup") {
+    runPeriodicStorageCleanup();
+  }
 });
-
 
 function runPeriodicStorageCleanup() {
-    console.log("Cache Cleared at", Date.now());
-    
+  console.log("Cache Cleared at:", new Date().toLocaleTimeString());
 }
