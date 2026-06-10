@@ -189,12 +189,12 @@ function processQueue() {
     queueIntervalId = null;
     return;
   }
-  pendingVideos.delete(videoID);
-
+  
   const currentTask = elementQueue.shift();
   const videoID = currentTask.videoId;
   const placeholderElement = currentTask.placeholderElement;
-
+  
+  pendingVideos.delete(videoID);
   if (!placeholderElement || !document.body.contains(placeholderElement)) {
     console.log("[ThumbScore] Placeholder unavilable:", videoID);
     return;
@@ -226,6 +226,7 @@ const observer = new MutationObserver(() => {
     const tagName = el.tagName.toLowerCase();
     const videoId = getVideoId(el, tagName);
     const targetRow = getTargetRow(el, tagName);
+    
 
     if (videoId && targetRow) {
       const placeholderElement = injectPlaceholder(targetRow, tagName);
