@@ -9,6 +9,8 @@ let scoreDB = {};
 const DB_NAME = "ThumbScoreDB";
 const DB_STORE = "scores";
 const DB_VERSION = 1;
+const DB_POINTER = indexedDB.open(DB_NAME, DB_VERSION);
+
 
 // Cache Tiers
 const TIER_PERSONAL = 1;
