@@ -1,24 +1,20 @@
 {
   "$schema": "https://json.schemastore.org/chrome-manifest.json",
-  "chromium:manifest_version": 3,
-  "firefox:manifest_version": 2,
+  "manifest_version": 3,
   "version": "1.0.0",
   "name": "RatioYT",
   "description": "Adds RYD dislike metrics directly to the YouTube interface.",
-  "icons": {
-    "16": "images/icon.png",
-    "128": "images/icon.png"
-  },
-  "chromium:action": { "default_popup": "./popup/index.html" },
-  "firefox:browser_action": { "default_popup": "./popup/index.html" },
-  "permissions": ["storage"],
+  "icons": { "16": "images/icon.png", "128": "images/icon.png" },
+  "action": { "default_popup": "./popup/index.html" },
+  "permissions": ["storage", "alarms"],
+  "chromium:background": { "service_worker": "./background/main.js" },
+  "firefox:background": { "scripts": ["./background/main.js"] },
   "content_scripts": [
     {
       "matches": ["https://*.youtube.com/*", "https://youtube.com/*"],
       "js": ["content/scripts.js"]
     }
   ],
-
   "host_permissions": ["https://returnyoutubedislikeapi.com/*"],
   "author": "Bittu"
 }
