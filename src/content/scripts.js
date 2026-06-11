@@ -1,5 +1,4 @@
 //  Queue Realted Stuff
-
 let elementQueue = [];
 let queueIntervalId = null;
 let pendingVideos = new Set();

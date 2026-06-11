@@ -44,36 +44,36 @@ npm run preview
 
 Devlog #1: Initial Design and goals
 
-Whenever I look up neiche stuff on youtube, many times low quality clickbait pops up inn the feed, I was getting annoyed so i made this extension.
-The goal is to bascially show some kind of % or rating at the bottom of the every tile in the yt homescreen, those values will be hte ratio of likes to dislikes
+Whenever I look up niches stuff on YouTube, many times low quality clickbait pops up inn the feed, I was getting annoyed so i made this extension.
+The goal is to basically show some kind of % or rating at the bottom of the every tile in the yt home screen, those values will be the ratio of likes to dislikes
 
-for this project these are the things im going to use
-- Return youtube dislike API (since youtube stopped providing dislike data itself)
+for this project these are the things I'm going to use
+- Return YouTube dislike API (since YouTube stopped providing dislike data itself)
 - Extension.js for cross browser Extensions
 - Browser Storage API for caching API requests
 
 Some extra features I would like to add would be
 - A settings Popup
 - hiding videos with low score
-- Ability to use different rating quanitfiers
+- Ability to use different rating quantifiers
 
-This is my first time making an extension, so far I have managed to setup the initial manifest.json and make a basic popup
+This is my first time making an extension, so far I have managed to setup the initial `manifest.json` and make a basic popup
 
-
-
-next devlog tell users about alternatives
+![image](https://cdn.hackclub.com/019ea6f0-1686-79ea-9d23-e745cd03c215/Screenshot%202026-06-08%20163525.png)
 
 ---
 
-
-
+Devlog #2: Injecting Text Into YouTube UI
 
 First things first I changed the project's name from `RatioYT` to `ThumbScore for YouTube` (I suck at naming things)
 
 now as for the progress, I managed to inject placeholder text into youtube UI
 and ngl that was more troublesome than I expected it to be.
 
-when I inspecting the HTML it had so many tags and elements TWT
+![image](https://cdn.hackclub.com/019eaaf7-d05b-77f4-b0a6-fdf99e024f3b/Screenshot%202026-06-09%20112230.png)
+(I am using a clean profile for development, so this is not what my actual YT recommendations look like ^_^ )
+
+when I was inspecting the HTML it had so many tags and elements TWT
 also the structure of videos arent consisitent throught the youtube system
 
 there are different structers for the videos and shorts in these places
@@ -87,7 +87,39 @@ there are different structers for the videos and shorts in these places
 - Playlist Queues
 
 for now I think I managed to insert text in all these places programamtically.
-But after doing this initial setup I found one major issue, There are too many videos, teh users will hit API rate limits if they try to fetch video data for each of them, I can add rate limits, but then the extension wont be responsive enough.
+But after doing this initial setup I found one major issue, There are too many videos, the users will hit API rate limits if they try to fetch video data for each of them, I can add rate limits, but then the extension wont be responsive enough.
 
 I have a plan for this isuues, but i'll first lookup online about similar implementaions before deciding on my plan of action.
 
+---
+
+
+Devlog #3: Major Code Refactoring and Improvements
+
+Today I worked on rewriting my code where I thought performance was being sacrificed.
+
+I have divided the code into 3 parts
+- UI Update Script
+- Storage Cleanup Script
+- \<planned for future part>
+
+I'm using an IndexDB database to maintain a local copy of all the YT video ids and their scores and how long before their cache needs to be purged
+
+now explaining what the 3 pieces do in simple terms
+
+the UI scripts looks for YouTube DOM updates and extracts video ids and places a placeholder div where the score will be added
+then the score is first looked up in the local database and if not found its looked up in the external API
+
+The UI script pulls data from the database once on every page load and it does not bother checking if the cache is expired, that's handled by the storage background script that runs every 15 minutes and cleans the storage of old cache
+
+I have created a robust system of caching with 3 different tiers, I plan on adding a cache sharing system between users where these tiers will come in handy
+
+Oh and Kind of random but this little function that coverts score into a HSL colour code in a range between red and green is probably my favorite thing I did today, there were other things I did today that were more difficult to achieve for me, but this was more fun than anyone of them.
+
+![image](https://cdn.hackclub.com/019eb189-533d-7b88-9b31-881858894016/Screenshot%202026-06-10%20115623.png)
+![image](https://cdn.hackclub.com/019eb189-7def-7a59-a533-80b8ee7ce518/Screenshot%202026-06-10%20115608.png)
+*[The Scores are randomly generated for now, those aren't real ratings]*
+
+I also learned a lot of difference between browser compatibility for extension development, good thing i started with a framework otherwise I would have been screwed trying to build for both chrome and firefox
+
+---
