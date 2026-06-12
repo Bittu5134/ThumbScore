@@ -81,6 +81,23 @@ function saveToIndexDB(videoId, scoreValue, expiresAt) {
   store.put(newEntry);
 }
 
+function deleteCacheRecord(videoId) {
+  const store = getStore("readwrite");
+  if (!store) return false;
+
+  delete scoreDB[videoId];
+
+  const request = store.delete(videoId);
+
+  request.onsuccess = () => console.log("[ThumbScore] Deleted cache:", videoId);
+
+  request.onerror = (event) => {
+    console.error("[ThumbScore] Failed to delete cache:", videoId, event.target.error);
+  };
+
+  return true;
+}
+
 // UI: Extracts Video From All UI types like, Homescreen, Serahc, Playlists etc etc
 function getVideoId(el, tagName) {
   try {
@@ -188,11 +205,11 @@ function processQueue() {
     queueIntervalId = null;
     return;
   }
-  
+
   const currentTask = elementQueue.shift();
   const videoID = currentTask.videoId;
   const placeholderElement = currentTask.placeholderElement;
-  
+
   pendingVideos.delete(videoID);
   if (!placeholderElement || !document.body.contains(placeholderElement)) {
     console.log("[ThumbScore] Placeholder unavilable:", videoID);
@@ -225,7 +242,6 @@ const observer = new MutationObserver(() => {
     const tagName = el.tagName.toLowerCase();
     const videoId = getVideoId(el, tagName);
     const targetRow = getTargetRow(el, tagName);
-    
 
     if (videoId && targetRow) {
       const placeholderElement = injectPlaceholder(targetRow, tagName);
@@ -234,6 +250,9 @@ const observer = new MutationObserver(() => {
       //  Check Cache First
       if (cachedRecord !== undefined) {
         applyFinalScore(placeholderElement, cachedRecord.score);
+        if (cachedRecord.expiresAt <= Date.now()) {
+          deleteCacheRecord(videoId);
+        }
       } else if (!pendingVideos.has(videoId)) {
         pendingVideos.add(videoId);
         elementQueue.push({ videoId: videoId, placeholderElement: placeholderElement });
@@ -258,3 +277,4 @@ window.addEventListener("yt-navigate-start", () => {
   }
   console.log("[ThumbScore] UI Queue Cleared.");
 });
+

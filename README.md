@@ -123,3 +123,12 @@ Oh and Kind of random but this little function that coverts score into a HSL col
 I also learned a lot of difference between browser compatibility for extension development, good thing i started with a framework otherwise I would have been screwed trying to build for both chrome and firefox
 
 ---
+
+Devlog #4: Set Backs and Change of design
+
+Just a short journel, I was qorking on the background cache cleaning and updating script, But I overlooked a critical point.
+The IndexDB i'm using to save data is stored per origin, meaning the indexDB used by the content script is not the same as the indexDB used by the background scipt.
+
+This has forced me to fundamentally change my approach and I'll be shifting all the code to the content scripts.
+
+---
