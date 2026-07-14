@@ -1,3 +1,5 @@
+import {peerInit} from "./peer.js"
+
 //  Queue Realted Stuff
 let elementQueue = [];
 let queueIntervalId = null;
@@ -54,6 +56,7 @@ function initializeDatabase() {
       });
 
       console.log("[ThumbScore] Cache loaded:", allEntries.length);
+      observer.observe(document.body, { childList: true, subtree: true });
     };
   };
 
@@ -248,13 +251,11 @@ const observer = new MutationObserver(() => {
       const cachedRecord = scoreDB[videoId];
 
       //  Check Cache First
-      if (cachedRecord !== undefined) {
+      if (cachedRecord !== undefined && cachedRecord.expiresAt > Date.now()) {
         applyFinalScore(placeholderElement, cachedRecord.score);
-        if (cachedRecord.expiresAt <= Date.now()) {
-          deleteCacheRecord(videoId);
-        }
-      } else if (!pendingVideos.has(videoId)) {
-        pendingVideos.add(videoId);
+      } else {
+        if (cachedRecord !== undefined) deleteCacheRecord(videoId);
+        if (!pendingVideos.has(videoId)) pendingVideos.add(videoId);
         elementQueue.push({ videoId: videoId, placeholderElement: placeholderElement });
       }
     }
@@ -264,8 +265,6 @@ const observer = new MutationObserver(() => {
     queueIntervalId = setInterval(processQueue, 500);
   }
 });
-
-observer.observe(document.body, { childList: true, subtree: true });
 
 // UI: Clear elements for the processQueue Function
 window.addEventListener("yt-navigate-start", () => {
@@ -278,3 +277,5 @@ window.addEventListener("yt-navigate-start", () => {
   console.log("[ThumbScore] UI Queue Cleared.");
 });
 
+
+peerInit(scoreDB)

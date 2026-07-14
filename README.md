@@ -132,3 +132,51 @@ The IndexDB i'm using to save data is stored per origin, meaning the indexDB use
 This has forced me to fundamentally change my approach and I'll be shifting all the code to the content scripts.
 
 ---
+
+Devlog #5: New Sub-Project Idea
+
+I had planned to use WEB-RTC + PeerJS to connect users of the client to share their cache with each other.
+But I ran into several issues along the line.
+
+My Biggest Issues Were
+
+- need of a TURN/STUN server for WebRTC connection
+- NAT Issues
+- Dicovery Problem
+
+Now I'll elaborate on each one of them one by one
+
+### Issue of the STUN server
+
+whenever you connect through WEB-RTC your public IP address is needed, for that we use a STUN server to fetch that imfo, Luckily Google provides a free public stun server which I would be using
+
+### NAT Issues
+
+Around 10-20 % of my users might be behind heaveliy restricted company or commercial NAT, which simply means that they dont have thier own static IPs but some random internal routing is done by the isp, there are workarounds for it but at my level they are pointless
+
+### Discovery problem
+
+Even if I use Peer.js's default signalling server I will have to know the exact id of the other user. which is not exactly possible with a backend.
+
+At first I just thought of self-hosting a backend myself, cuase it had a feature to get all peers ready to connect. But its problem was that it just dumped all the peers at once, plus it would put too much pressure on the server
+
+### My Solution
+
+Create a lobby server, where users can post and get others ids without having to explicitally trying to hardcode an id. what it will do is just collect users who ping the server with their ids and then display those ids
+
+no need for elaborate setup process for my future projects too, and I plan to turn it into a fulll fledged website, package and server
+
+---
+
+
+## Options page Features
+
+Scoring System
+Scoring Colour
+Cache Sharing
+Hide Videos With Low Score
+Low Score Threshold
+
+
+---
+
