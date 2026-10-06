@@ -202,7 +202,7 @@ function applyFinalScore(placeholderElement, scoreValue) {
 }
 
 // UI: Fetch Scores fro non Cached videos
-function processQueue() {
+async function processQueue() {
   if (elementQueue.length === 0) {
     clearInterval(queueIntervalId);
     queueIntervalId = null;
@@ -219,17 +219,32 @@ function processQueue() {
     return;
   }
 
-  // --- ARBITRARY CODE EXECUTION SPACE ---
+  // --- RYD API ---
   console.log("[ThumbScore] Fetching score:", videoID);
-  const fetchedScore = Math.floor(Math.random() * 101);
 
-  const randomDaysOld = Math.floor(Math.random() * 31);
-  const millisecondsInADay = 24 * 60 * 60 * 1000;
-  const expirationTimestamp = Date.now() + randomDaysOld * millisecondsInADay;
+  try {
+    const response = await fetch(`https://returnyoutubedislikeapi.com/votes?videoId=${videoID}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const votes = await response.json();
 
-  // Save to storage
-  saveToIndexDB(videoID, fetchedScore, expirationTimestamp);
-  applyFinalScore(placeholderElement, fetchedScore);
+    if (votes.deleted || (votes.likes === undefined && votes.dislikes === undefined)) {
+      placeholderElement.textContent = "N/A";
+      return;
+    }
+
+    const total = votes.likes + votes.dislikes;
+    const fetchedScore = total > 0 ? Math.round((votes.likes / total) * 100) : 0;
+
+    // Cache for 7 days
+    const expirationTimestamp = Date.now() + 7 * 24 * 60 * 60 * 1000;
+
+    // Save to storage
+    saveToIndexDB(videoID, fetchedScore, expirationTimestamp);
+    applyFinalScore(placeholderElement, fetchedScore);
+  } catch (err) {
+    console.error("[ThumbScore] API failed:", videoID, err);
+    placeholderElement.textContent = "--%";
+  }
 }
 
 // Main Loop
